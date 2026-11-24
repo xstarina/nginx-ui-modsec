@@ -139,6 +139,11 @@ RUN set -eux; \
     mkdir -p /out/lib; \
     cp objs/ngx_http_modsecurity_module.so /out/; \
     cp /usr/local/modsecurity/lib/libmodsecurity.so.3.* /out/lib/; \
+    for component in modsecurity modsecurity-nginx; do \
+        mkdir -p "/out/licenses/$component"; \
+        cp "/src/$component/LICENSE" "/out/licenses/$component/"; \
+        if [ -f "/src/$component/NOTICE" ]; then cp "/src/$component/NOTICE" "/out/licenses/$component/"; fi; \
+    done; \
     ls -la /out /out/lib
 
 
@@ -169,6 +174,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /out/ngx_http_modsecurity_module.so /usr/lib/nginx/modules/
 COPY --from=builder /out/lib/ /usr/local/lib/
+COPY --from=builder /out/licenses/ /usr/share/doc/nginx-ui-modsec/
+COPY LICENSE THIRD_PARTY.md /usr/share/doc/nginx-ui-modsec/
 COPY --from=builder /src/modsecurity/unicode.mapping /etc/modsecurity.d/
 COPY --from=builder /src/modsecurity/modsecurity.conf-recommended /etc/modsecurity.d/modsecurity.conf
 
