@@ -93,7 +93,16 @@ jobs:
           load: true
           push: false
           tags: nginx-ui-modsec:ci-candidate
-          labels: ${{ steps.meta.outputs.labels }}
+          # metadata-action infers MIT from the repository, but the image also
+          # contains third-party components under other licenses.
+          labels: |
+            org.opencontainers.image.title=nginx-ui-modsec
+            org.opencontainers.image.description=nginx-ui with ModSecurity v3 and OWASP Core Rule Set
+            org.opencontainers.image.vendor=xstarina
+            org.opencontainers.image.source=https://github.com/xstarina/nginx-ui-modsec
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=
           build-args: |
             NGINX_UI_IMAGE=${{ steps.params.outputs.NGINX_UI_IMAGE }}
             NGINX_UI_TAG=${{ steps.params.outputs.NGINX_UI_TAG }}

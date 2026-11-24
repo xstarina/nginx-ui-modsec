@@ -41,7 +41,15 @@ check 200 "http://127.0.0.1:${PORT}/" "обычный запрос проход�
 check 403 "http://127.0.0.1:${PORT}/?q=%27%20OR%201%3D1--" "SQLi блокируется (CRS 942xxx)"
 check 403 "http://127.0.0.1:${PORT}/?q=%3Cscript%3Ealert(1)%3C/script%3E" "XSS блокируется (CRS 941xxx)"
 
-if docker logs "$NAME" 2>&1 | grep -q '"transaction"'; then
+audit_found=0
+for _ in $(seq 10); do
+    if docker logs "$NAME" 2>&1 | grep '"transaction"' >/dev/null; then
+        audit_found=1
+        break
+    fi
+    sleep 1
+done
+if [ "$audit_found" = 1 ]; then
     printf '  ok    аудит-лог пишется в JSON\n'
 else
     printf '  ПРОВАЛ аудит-лог пуст или не в JSON\n'

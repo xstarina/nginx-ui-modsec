@@ -1,6 +1,17 @@
-nginx/
-nginx-ui/
-www/
-logs/
+# Данные развёртывания, сертификаты и журналы на хосте.
+/nginx/
+/nginx-ui/
+/www/
+/logs/
+# Старый локальный каталог теста; текущая тестовая страница — smoke-www.
+/test/www/
+
+# Локальные настройки и исключения WAF могут содержать данные окружения.
+/modsec/modsecurity.conf
+/modsec/custom/before/*.conf
+/modsec/custom/after/*.conf
+!/modsec/custom/before/00-placeholder.conf
+!/modsec/custom/after/00-placeholder.conf
+
 *.bak
 .DS_Store
