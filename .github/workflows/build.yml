@@ -1,0 +1,144 @@
+name: Build container
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and smoke test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate publication target
+        if: github.event_name != 'pull_request'
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ "$REF" = refs/heads/main ]; then
+            exit 0
+          fi
+          if [[ "$REF" != refs/tags/* || ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Publication is allowed only from main or a vX.Y.Z tag.' >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo 'The release tag must point to a commit in main.' >&2
+            exit 1
+          }
+
+      - name: Read build parameters
+        id: params
+        run: |
+          set -eu
+          set -a
+          . ./.env
+          set +a
+          for name in NGINX_UI_IMAGE NGINX_UI_TAG NGINX_UI_DIGEST BUILDER_BASE MODSEC_VERSION MODSEC_NGINX_VERSION CRS_VERSION; do
+            value="${!name:?missing build parameter}"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Fork PRs have a read-only token and do not need registry credentials.
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/xstarina/nginx-ui-modsec
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=ref,event=branch
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=nginx-ui-modsec
+            org.opencontainers.image.description=nginx-ui with ModSecurity v3 and OWASP Core Rule Set
+            org.opencontainers.image.vendor=xstarina
+
+      - name: Build candidate
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: nginx-ui-modsec:ci-candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NGINX_UI_IMAGE=${{ steps.params.outputs.NGINX_UI_IMAGE }}
+            NGINX_UI_TAG=${{ steps.params.outputs.NGINX_UI_TAG }}
+            NGINX_UI_DIGEST=${{ steps.params.outputs.NGINX_UI_DIGEST }}
+            BUILDER_BASE=${{ steps.params.outputs.BUILDER_BASE }}
+            MODSEC_VERSION=${{ steps.params.outputs.MODSEC_VERSION }}
+            MODSEC_NGINX_VERSION=${{ steps.params.outputs.MODSEC_NGINX_VERSION }}
+            CRS_VERSION=${{ steps.params.outputs.CRS_VERSION }}
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT_SHA=${{ github.sha }}
+          cache-from: ${{ github.event_name != 'pull_request' && 'type=registry,ref=ghcr.io/xstarina/nginx-ui-modsec:buildcache' || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=registry,ref=ghcr.io/xstarina/nginx-ui-modsec:buildcache,mode=max' || '' }}
+
+      - name: Smoke test
+        run: ./test/smoke.sh nginx-ui-modsec:ci-candidate
+
+      - name: Publish tested image
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -eu
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag nginx-ui-modsec:ci-candidate "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Create release if needed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --verify-tag
+          fi
