@@ -16,7 +16,7 @@ docker run -d --name "$NAME" \
     --entrypoint nginx \
     -v "${HERE}/smoke.conf:/tmp/smoke.conf:ro" \
     -v "${HERE}/smoke-rules.conf:/tmp/smoke-rules.conf:ro" \
-    -v "${HERE}/www:/tmp/www:ro" \
+    -v "${HERE}/smoke-www:/tmp/www:ro" \
     -p "127.0.0.1:${PORT}:8081" \
     "$IMAGE" -c /tmp/smoke.conf -g 'daemon off;' >/dev/null
 
