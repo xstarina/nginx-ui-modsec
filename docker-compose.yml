@@ -1,0 +1,49 @@
+# Образ собирается локально через ./build.sh — он же проставляет IMAGE_TAG в .env.
+# Секция build оставлена как запасной путь (docker-compose build), но обычный
+# цикл — ./build.sh: он прогоняет дымовой тест перед тем, как пометить образ
+# рабочим тегом.
+#
+# Формат совместим и с плагином `docker compose`, и со standalone
+# `docker-compose` v2.
+
+services:
+  nginx-ui:
+    # Значение в кавычках намеренно: внутри ${VAR:?...} есть двоеточие,
+    # а неэкранированное ": " в YAML читается как вложенное отображение.
+    image: "${IMAGE_NAME}:${IMAGE_TAG:?сначала соберите образ — запустите ./build.sh}"
+    build:
+      context: .
+      args:
+        NGINX_UI_IMAGE: ${NGINX_UI_IMAGE}
+        NGINX_UI_TAG: ${NGINX_UI_TAG}
+        NGINX_UI_DIGEST: ${NGINX_UI_DIGEST}
+        BUILDER_BASE: ${BUILDER_BASE}
+        MODSEC_VERSION: ${MODSEC_VERSION}
+        MODSEC_NGINX_VERSION: ${MODSEC_NGINX_VERSION}
+        CRS_VERSION: ${CRS_VERSION}
+    container_name: nginx-ui
+    restart: always
+    stdin_open: true
+    tty: true
+    environment:
+      TZ: ${TZ}
+    volumes:
+      # конфиги nginx и сертификаты, выпущенные через панель
+      - ./nginx:/etc/nginx
+      # база и app.ini nginx-ui
+      - ./nginx-ui:/etc/nginx-ui
+      - ./www:/var/www
+      # исключения CRS: правятся на хосте, применяются reload'ом из панели
+      - ./modsec/custom:/etc/modsecurity.d/custom:ro
+      # раскомментировать, если нужно менять режим/настройки движка
+      # без пересборки образа:
+      # - ./modsec/modsecurity.conf:/etc/modsecurity.d/modsecurity.conf:ro
+      - ./logs:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
