@@ -7,3 +7,9 @@ logs/
 *.bak
 .env.bak
 README.md
+# Git-история и локальные параметры не нужны для сборки образа.
+.git
+.env
+# Локальные правила и настройки монтируются при запуске, а не копируются.
+modsec/custom/
+modsec/modsecurity.conf
